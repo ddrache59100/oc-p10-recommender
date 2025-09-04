@@ -1,0 +1,42 @@
+{
+  "dataset_info": {
+    "n_users": 322897,
+    "n_sessions": 1048594,
+    "n_articles_total": 364047,
+    "n_articles_clicked": 46033,
+    "n_interactions": 2988181,
+    "n_categories": 461
+  },
+  "sparsity_metrics": {
+    "sparsity_percentage": 99.97989641035282,
+    "density_percentage": 0.020103589647180176,
+    "coverage_articles": 12.644795864270272
+  },
+  "user_segments": {
+    "cold_start": {
+      "count": 180590,
+      "percentage": 55.92805136003122,
+      "threshold": "<=5 interactions"
+    },
+    "moderate": {
+      "count": 93418,
+      "percentage": 28.931207165133156,
+      "threshold": "6-15 interactions"
+    },
+    "active": {
+      "count": 48889,
+      "percentage": 15.140741474835629,
+      "threshold": ">15 interactions"
+    }
+  },
+  "embeddings_info": {
+    "n_dimensions": 250,
+    "size_mb": 347.1823959350586,
+    "pca_90_variance_dims": 208
+  },
+  "recommendations": {
+    "content_based": "Viable pour 100% des utilisateurs",
+    "collaborative": "Viable pour 44.1% des utilisateurs",
+    "hybrid_strategy": "CB pour cold start, CF progressif pour actifs"
+  }
+}
