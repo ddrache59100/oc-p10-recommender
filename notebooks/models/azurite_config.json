@@ -1,0 +1,21 @@
+{
+  "connection_string": "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;",
+  "container": "recommendation-models",
+  "models": {
+    "content_based": {
+      "local_path": "models/blob_cb_pca50.pkl",
+      "blob_path": "models/cb_pca50.pkl",
+      "size_mb": 69.43667030334473
+    },
+    "collaborative": {
+      "local_path": "models/blob_cf_svd.pkl",
+      "blob_path": "models/cf_svd.pkl",
+      "size_mb": 230.95129299163818
+    },
+    "metadata": {
+      "local_path": "models/blob_metadata.pkl",
+      "blob_path": "config/metadata.pkl",
+      "size_mb": 0.00101470947265625
+    }
+  }
+}
