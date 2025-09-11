@@ -20,11 +20,11 @@ Ce projet implémente un système de recommandation d'articles pour une platefor
   - Moderate (6-15 interactions) : 70% CB + 30% CF
   - Active (>15 interactions) : 30% CB + 70% CF
 
-### Infrastructure
+### Infrastructure Azure
 - **Azure Functions** : API serverless
-- **Azure Blob Storage** : Stockage des modèles
-- **Streamlit** : Interface utilisateur
-- **Azurite** : Émulateur Blob Storage local
+- **Azure Blob Storage** : Stockage des modèles (300MB total)
+- **Application Insights** : Monitoring
+- **Streamlit Web App** : Interface utilisateur
 
 ## 📁 Structure du projet
 
@@ -59,12 +59,13 @@ Ce projet implémente un système de recommandation d'articles pour une platefor
 - Conda (recommandé)
 - Azure Functions Core Tools
 - Node.js 14+ (pour Azurite)
+- Compte Azure actif
 
 ### Configuration de l'environnement
 
 ```bash
 # Cloner le repository
-git clone https://github.com/votre-username/oc-p10-recommender.git
+git clone https://github.com/ddrache59100/oc-p10-recommender.git
 cd oc-p10-recommender
 
 # Créer environnement conda
@@ -73,7 +74,6 @@ conda activate azure-local
 
 # Installer les dépendances Python
 pip install -r requirements.txt
-pip install scikit-surprise  # Pour Collaborative Filtering
 
 # Installer Azurite (émulateur Blob Storage)
 npm install -g azurite
@@ -87,7 +87,7 @@ sudo apt-get update
 sudo apt-get install azure-functions-core-tools-4
 ```
 
-## 🔧 Lancement local
+## 🔧 Tests en local
 
 ### 1. Démarrer le stockage Blob local (Terminal 1)
 ```bash
@@ -126,99 +126,52 @@ curl -X POST http://localhost:7071/api/recommend \
   -d '{"user_id": 3, "history": [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20], "n_recommendations": 5}'
 ```
 
-### 5. Lancer Streamlit (optionnel)
-```bash
-cd streamlit_app
-streamlit run app.py
-```
-
-## 📊 Résultats
+## 📊 Résultats en production
 
 ### Métriques de performance
 | Métrique | Valeur |
 |----------|--------|
 | Diversité | 97% |
 | Coverage | 97 articles uniques |
-| Performance API | <100ms (avec cache) |
+| Performance API | ~110ms premier appel, <1ms avec cache |
 | Taux de succès | 100% des utilisateurs |
 | Cold start géré | 55.9% des utilisateurs |
-| Taille modèles | 300MB total |
+| Taille modèles | 300MB total dans Blob Storage |
 
-### Comparaison des approches
-| Approche | Diversité | Performance | Cold Start | Personnalisation |
-|----------|-----------|-------------|------------|------------------|
-| Content-Based | 98% | 10ms | ✅ Excellent | ⚠️ Limitée |
-| Collaborative | 94% | 50ms | ❌ Problème | ✅ Excellente |
-| **Hybride** | **97%** | **90ms** | **✅ Géré** | **✅ Adaptative** |
+### URLs de production
+- **API**: https://func-oc-p10-recommender.azurewebsites.net/api/recommend
+- **Streamlit**: https://app-oc-p10-recommender-streamlit.azurewebsites.net
 
 ### Distribution des utilisateurs
 - Cold start (≤5 clics) : 55.9%
 - Moderate (6-15 clics) : 28.9%
 - Active (>15 clics) : 15.2%
 
-## ☁️ Déploiement sur Azure
+## ☁️ Architecture déployée sur Azure
 
-### Prérequis Azure
-- Compte Azure actif
-- Azure CLI installé
-- Droits de création de ressources
+### Ressources Azure utilisées
+- **Resource Group**: rg-p10-recommender
+- **Storage Account**: stp10rec2025 (West Europe)
+- **Function App**: func-oc-p10-recommender (France Central)
+- **App Service**: app-oc-p10-recommender-streamlit (West Europe)
+- **Application Insights**: Monitoring intégré
+- **Blob Container**: recommendation-models
 
-### Commandes de déploiement
-```bash
-# Créer un groupe de ressources
-az group create --name rg-recommender --location francecentral
-
-# Créer un compte de stockage
-az storage account create \
-  --name strecommender \
-  --resource-group rg-recommender \
-  --location francecentral \
-  --sku Standard_LRS
-
-# Créer un container Blob
-az storage container create \
-  --name recommendation-models \
-  --account-name strecommender
-
-# Créer l'application Function
-az functionapp create \
-  --resource-group rg-recommender \
-  --consumption-plan-location francecentral \
-  --runtime python \
-  --runtime-version 3.10 \
-  --functions-version 4 \
-  --name func-recommender \
-  --storage-account strecommender
-
-# Déployer le code
-cd azure_functions
-func azure functionapp publish func-recommender
+### Modèles dans Blob Storage
 ```
-
-## 🧪 Tests et validation
-
-### Tests unitaires
-```bash
-pytest tests/
+recommendation-models/
+├── models/cb_pca50.pkl (69.4 MB)
+├── models/cf_svd.pkl (231.0 MB)
+└── config/metadata.pkl (<1 MB)
 ```
-
-### Tests de charge
-```bash
-locust -f tests/load_test.py --host=http://localhost:7071
-```
-
-### Monitoring
-- Application Insights pour les métriques
-- Logs Azure Functions pour le debugging
-- Cache hit rate > 80% attendu
 
 ## 📚 Documentation technique
 
 ### Notebooks
-1. **01_exploration.ipynb** : Analyse des données, sparsité, distributions
-2. **02_content_based_recommender.ipynb** : Implémentation CB avec PCA
-3. **03_collaborative_filtering.ipynb** : SVD et ALS, gestion sparsité
-4. **04_hybrid_recommender.ipynb** : Fusion et stratégie adaptative
+1. **01_exploration.ipynb** : Analyse des données, sparsité (99.98%), distributions
+2. **02_content_based_recommender.ipynb** : Implémentation CB avec PCA, réduction 364k→50 dimensions
+3. **03_collaborative_filtering.ipynb** : SVD et ALS, gestion sparsité extrême
+4. **04_hybrid_recommender.ipynb** : Fusion adaptative, déploiement Blob Storage
 
 ### API Endpoints
 ```
@@ -240,9 +193,25 @@ Réponse :
   "recommendations": [
     {"article_id": 456, "score": 0.89, "method": "content_based"},
     ...
-  ]
+  ],
+  "inference_time_ms": 110.8
 }
 ```
+
+## 🧪 Technologies utilisées
+
+### Data Science
+- **numpy 1.26.4** : Calculs matriciels
+- **pandas 2.0.3** : Manipulation des données
+- **scikit-learn 1.3.0** : PCA, métriques
+- **scikit-surprise 1.1.4** : SVD pour collaborative filtering
+- **mlflow** : Tracking des expériences (80+ runs)
+
+### Cloud & Déploiement
+- **Azure Functions** : Serverless computing
+- **Azure Blob Storage** : Stockage des modèles
+- **Streamlit** : Interface web
+- **Azurite** : Émulateur Blob Storage local
 
 ## 🔮 Évolutions futures
 
@@ -252,11 +221,40 @@ Réponse :
 - [ ] API GraphQL
 - [ ] Mise à jour incrémentale des modèles
 - [ ] Support multi-langue
+- [ ] Cache Redis distribué
+
+## 🔧 Troubleshooting
+
+### Problème : "No module named 'surprise'"
+```bash
+pip install scikit-surprise==1.1.4
+```
+
+### Problème : Azurite connection error
+Vérifier qu'Azurite est lancé sur le port 10000 :
+```bash
+netstat -an | grep 10000
+```
+
+### Problème : Modèles trop gros pour GitHub
+Les modèles utilisent Git LFS. Si problème :
+```bash
+git lfs install
+git lfs pull
+```
+
+## 📂 Données
+
+Les données proviennent du dataset public Globo.com (non incluses dans ce repo) :
+- **Source** : [Globo.com News Dataset](https://www.kaggle.com/gspmoreira/news-portal-user-interactions-by-globocom)
+- **Période** : 16 jours d'octobre 2017
+- **Volume** : 2.9M interactions, 322K users, 364K articles
+- **Téléchargement** : Les données doivent être placées dans `notebooks/data/`
 
 ## 👨‍💻 Auteur
 
 **Didier DRACHE**  
-Formation Data & AI Engineer - OpenClassrooms  
+Formation Data Scientist - OpenClassrooms  
 Projet 10 : Système de Recommandation  
 Septembre 2025
 
@@ -266,7 +264,7 @@ GitHub : [@ddrache59100](https://github.com/ddrache59100)
 
 - **OpenClassrooms** pour le cadre pédagogique
 - **Globo.com** pour le dataset public
-- **Microsoft Azure** pour l'hébergement
+- **Microsoft Azure** pour l'infrastructure cloud
 - **Mon mentor OC** Sitou AFANOU pour le suivi et les conseils
 
 ---

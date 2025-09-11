@@ -5,6 +5,7 @@ import json
 import azure.functions as func
 import pickle
 import numpy as np
+import os
 from azure.storage.blob import BlobServiceClient
 from typing import Dict, List, Tuple
 import time
@@ -14,7 +15,9 @@ _models_cache = {}
 _recommendations_cache = {}  # Cache des recommandations par user
 
 # Connection string Azurite
-CONN_STR = "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1"
+CONN_STR = os.environ.get('AZURE_STORAGE_CONNECTION_STRING', 
+                          "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1")
+
 
 def load_models_from_blob():
     """Charge tous les modèles depuis Blob Storage."""
