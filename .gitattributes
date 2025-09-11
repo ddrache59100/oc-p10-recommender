@@ -1,2 +1,5 @@
 *.pkl filter=lfs diff=lfs merge=lfs -text
 *.parquet filter=lfs diff=lfs merge=lfs -text
+*.pickle filter=lfs diff=lfs merge=lfs -text
+*.zip filter=lfs diff=lfs merge=lfs -text
+notebooks/models/*.pkl filter=lfs diff=lfs merge=lfs -text

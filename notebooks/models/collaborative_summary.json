@@ -1,0 +1,19 @@
+{
+  "date": "2025-09-09T10:27:50.901121",
+  "n_users": 322897,
+  "n_items": 46033,
+  "n_interactions": 2950710,
+  "density_pct": 0.019851495946139292,
+  "cold_start_pct": 55.92805136003122,
+  "moderate_pct": 28.931207165133156,
+  "active_pct": 15.140741474835629,
+  "best_surprise_model": "BaselineOnly",
+  "best_surprise_rmse": 0.046,
+  "best_coverage": 44.6,
+  "best_implicit_model": "ALS",
+  "conclusion": "Collaborative filtering viable avec dataset complet, hybridation reste recommand\u00e9e pour cold start",
+  "models_saved": [
+    "collaborative_svd.pkl",
+    "collaborative_als.pkl"
+  ]
+}

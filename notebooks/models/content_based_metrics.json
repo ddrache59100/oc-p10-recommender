@@ -1,0 +1,10 @@
+{
+  "model": "PCA-50",
+  "diversity_score": 0.9,
+  "catalogue_coverage": 0.11234813087321142,
+  "coverage_relative": 0.09558360306736471,
+  "popularity_bias": 14.6,
+  "avg_inference_ms": 94.68322277069092,
+  "model_size_mb": 69.5,
+  "variance_explained": 0.943
+}

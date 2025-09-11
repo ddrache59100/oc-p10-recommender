@@ -1,0 +1,25 @@
+{
+  "date": "2025-09-09T10:23:17.224818",
+  "models_created": 4,
+  "best_model": "PCA-50",
+  "metrics": {
+    "variance_explained": 0.943,
+    "diversity_score": 0.9,
+    "coverage_absolute": 0.00112,
+    "discovery_rate": 0.892,
+    "avg_inference_ms": 99,
+    "model_size_mb": 69.5
+  },
+  "dataset_stats": {
+    "total_interactions": 2988181,
+    "unique_users": 322897,
+    "cold_start_percentage": 55.9,
+    "articles_clicked": 46033,
+    "sparsity": 99.98
+  },
+  "next_steps": [
+    "collaborative_filtering",
+    "hybrid_system",
+    "azure_deployment"
+  ]
+}

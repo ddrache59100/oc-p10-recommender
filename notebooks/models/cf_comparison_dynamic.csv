@@ -1,0 +1,4 @@
+Model,Size (MB),MLflow_RMSE,MLflow_Training_Time,Type,model,diversity_score,catalogue_coverage,coverage_relative,popularity_bias,avg_inference_ms,model_size_mb,variance_explained
+SVD (Surprise),231.29,0.054125336179814756,,,,,,,,,,
+ALS (Implicit),105.65,,,,,,,,,,,
+Content-Based PCA-50,,,,Content-Based,PCA-50,0.9,0.11234813087321142,0.09558360306736471,14.6,94.68322277069092,69.5,0.943

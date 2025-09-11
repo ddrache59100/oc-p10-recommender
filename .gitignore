@@ -1,56 +1,53 @@
 # Python
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
+*.pyc
+*.pyo
+*.pyd
 .Python
-.venv/
-venv/
-ENV/
-env/
+*.so
+*.egg
 *.egg-info/
-.pytest_cache/
+dist/
+build/
 
-# Jupyter Notebooks
+# Jupyter
 .ipynb_checkpoints/
-*/.ipynb_checkpoints/*
+*.ipynb_checkpoints
 
 # MLflow
 mlruns/
 mlartifacts/
 
-# Data files (trop volumineux)
-notebooks/data/articles_embeddings.pickle
-notebooks/data/globocom_dataset.zip
-notebooks/data/clicks/
-notebooks/data/processed/*.csv
-notebooks/data/processed/*.parquet
+# Azure
+local.settings.json
+.azure/
 
-# Large models (>100MB)
-notebooks/models/content_based_no_pca.pkl
-notebooks/models/content_based_pca_100.pkl
-notebooks/models/content_based_pca_150.pkl
-notebooks/models/collaborative_svd.pkl
-notebooks/models/collaborative_als.pkl
-notebooks/models/hybrid_recommender.pkl
+# Azurite
+azurite-data/__blobstorage__/
+azurite-data/*.json
 
-# Notebooks sans graphiques (gardez seulement versions avec graphiques)
-*_no_graphics.ipynb
-
-# Dossiers vides
-models/
-src/
-tests/
+# Environnements
+.venv/
+venv/
+ENV/
+env/
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Azure
-local.settings.json
+# Données volumineuses (optionnel)
+# *.pickle
+# *.pkl
+# *.parquet
+notebooks/data/clicks/
+notebooks/data/*.pickle
+notebooks/data/processed/*.csv
+notebooks/data/globocom_dataset.zip
