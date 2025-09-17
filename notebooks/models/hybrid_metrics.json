@@ -1,0 +1,15 @@
+{
+  "model": "Hybrid_Adaptive",
+  "strategy": {
+    "cold_start": "100% CB",
+    "moderate": "70% CB + 30% CF",
+    "active": "30% CB + 70% CF"
+  },
+  "rmse": 0.05196032273262217,
+  "coverage_pct": 55.52276671083788,
+  "diversity_score": 0.9682,
+  "novelty_score": 26.105458674716285,
+  "avg_inference_ms": 76.90719763437907,
+  "model_size_mb": 300.8,
+  "user_coverage": 100.0
+}

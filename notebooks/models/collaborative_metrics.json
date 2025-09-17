@@ -1,0 +1,10 @@
+{
+  "model": "SVD",
+  "rmse": 0.054125336179814756,
+  "coverage_pct": 44.5723719940043,
+  "diversity_score": 0.94,
+  "novelty_score": 7.8,
+  "avg_inference_ms": 18.717670440673828,
+  "model_size_mb": 231.3,
+  "training_time_s": 45.2
+}

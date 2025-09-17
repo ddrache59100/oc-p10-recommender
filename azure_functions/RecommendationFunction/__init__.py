@@ -1,4 +1,3 @@
-
 # azure_functions/RecommendationFunction/__init__.py
 import logging
 import json
@@ -9,10 +8,61 @@ import os
 from azure.storage.blob import BlobServiceClient
 from typing import Dict, List, Tuple
 import time
+from collections import OrderedDict
 
-# Cache global pour les modèles
-_models_cache = {}
-_recommendations_cache = {}  # Cache des recommandations par user
+# ===== IMPLEMENTATION CACHE LRU =====
+class LRUCache:
+    """Cache LRU (Least Recently Used) pour optimiser les performances."""
+    
+    def __init__(self, capacity: int = 100):
+        self.cache = OrderedDict()
+        self.capacity = capacity
+        self.hits = 0
+        self.misses = 0
+    
+    def get(self, key):
+        """Récupère une valeur du cache et la marque comme récemment utilisée."""
+        if key not in self.cache:
+            self.misses += 1
+            return None
+        # Déplacer en fin (plus récemment utilisé)
+        self.cache.move_to_end(key)
+        self.hits += 1
+        return self.cache[key]
+    
+    def put(self, key, value):
+        """Ajoute ou met à jour une valeur dans le cache."""
+        if key in self.cache:
+            # Mettre à jour et déplacer en fin
+            self.cache.move_to_end(key)
+        self.cache[key] = value
+        # Si dépassement capacité, supprimer le plus ancien (LRU)
+        if len(self.cache) > self.capacity:
+            oldest = next(iter(self.cache))
+            del self.cache[oldest]
+            logging.info(f"LRU: Éviction de l'entrée {oldest}")
+    
+    def clear(self):
+        """Vide complètement le cache."""
+        self.cache.clear()
+        self.hits = 0
+        self.misses = 0
+    
+    def get_stats(self):
+        """Retourne les statistiques du cache."""
+        total = self.hits + self.misses
+        hit_rate = (self.hits / total * 100) if total > 0 else 0
+        return {
+            'size': len(self.cache),
+            'capacity': self.capacity,
+            'hits': self.hits,
+            'misses': self.misses,
+            'hit_rate': hit_rate
+        }
+
+# ===== CACHES GLOBAUX AVEC LRU =====
+_models_cache = {}  # Cache des modèles (pas LRU car chargés une fois)
+_recommendations_cache = LRUCache(capacity=100)  # Cache LRU pour recommandations
 
 # Connection string Azurite
 CONN_STR = os.environ.get('AZURE_STORAGE_CONNECTION_STRING', 
@@ -58,172 +108,218 @@ def load_models_from_blob():
 
 def get_cb_recommendations(user_history: List[int], n_recs: int = 10) -> List[Tuple[int, float]]:
     """Calcule les recommandations Content-Based."""
-    if not user_history or 'cb' not in _models_cache:
+    if 'cb' not in _models_cache:
         return []
     
-    cb_model = _models_cache['cb']
-    embeddings = cb_model.get('embeddings', None)
+    embeddings = _models_cache['cb']['embeddings']
     
-    if embeddings is None:
-        return []
-    
-    # Moyenner les embeddings des articles de l'historique
+    # Créer profil utilisateur
     user_profile = np.zeros(embeddings.shape[1])
-    valid_items = 0
-    
     for article_id in user_history[-20:]:  # Derniers 20 articles
         if article_id < len(embeddings):
             user_profile += embeddings[article_id]
-            valid_items += 1
     
-    if valid_items == 0:
+    if np.sum(user_profile) == 0:
         return []
     
-    user_profile /= valid_items
+    user_profile = user_profile / np.linalg.norm(user_profile)
     
-    # Calculer les similarités cosinus
-    norms = np.linalg.norm(embeddings, axis=1)
-    norms[norms == 0] = 1
-    embeddings_norm = embeddings / norms[:, np.newaxis]
-    user_profile_norm = user_profile / np.linalg.norm(user_profile)
+    # Calculer similarités
+    similarities = np.dot(embeddings, user_profile)
     
-    similarities = embeddings_norm @ user_profile_norm
+    # Exclure articles déjà vus
+    for article_id in user_history:
+        if article_id < len(similarities):
+            similarities[article_id] = -1
     
-    # Exclure l'historique et obtenir top N
-    similarities[user_history] = -1
-    top_indices = np.argsort(similarities)[-n_recs*2:][::-1]
+    # Top N
+    top_indices = np.argsort(similarities)[-n_recs:][::-1]
     
-    recommendations = []
-    for idx in top_indices[:n_recs]:
-        if similarities[idx] > 0:
-            recommendations.append((int(idx), float(similarities[idx])))
-    
-    return recommendations
+    return [(int(idx), float(similarities[idx])) 
+            for idx in top_indices if similarities[idx] > 0]
 
 def get_cf_recommendations(user_id: int, n_recs: int = 10) -> List[Tuple[int, float]]:
     """Calcule les recommandations Collaborative Filtering."""
     if 'cf' not in _models_cache:
         return []
     
-    cf_model = _models_cache['cf']
-    
-    # Simuler avec des scores basés sur user_id (à remplacer par vrai SVD)
-    np.random.seed(user_id)
-    articles = np.random.choice(1000, n_recs, replace=False)
-    scores = np.random.uniform(0.5, 0.95, n_recs)
-    scores.sort()
-    scores = scores[::-1]
-    
-    return [(int(a), float(s)) for a, s in zip(articles, scores)]
+    try:
+        # Pour le POC: Simuler avec des scores basés sur user_id
+        # TODO: Implémenter avec vrai modèle SVD en production
+        np.random.seed(user_id)
+        articles = np.random.choice(1000, n_recs, replace=False)
+        scores = np.random.uniform(0.3, 0.9, n_recs)
+        
+        return [(int(article), float(score)) 
+                for article, score in zip(articles, scores)]
+    except Exception as e:
+        logging.error(f"Erreur CF: {str(e)}")
+        return []
 
-def merge_recommendations(cb_recs: List, cf_recs: List, weights: Tuple[float, float], n_final: int = 5) -> List[Dict]:
-    """Fusionne les recommandations CB et CF avec pondération."""
-    merged = {}
+def merge_recommendations(
+    cb_recs: List[Tuple[int, float]], 
+    cf_recs: List[Tuple[int, float]], 
+    weights: Tuple[float, float],
+    n_final: int = 5
+) -> List[Dict]:
+    """Fusionne les recommandations CB et CF avec normalisation."""
+    cb_weight, cf_weight = weights
     
-    # Ajouter CB avec poids
-    for article_id, score in cb_recs:
-        merged[article_id] = {
-            'score': score * weights[0],
-            'method': 'content_based'
+    # Normaliser les scores CB et CF entre 0 et 1
+    def normalize_scores(recs):
+        if not recs:
+            return []
+        scores = [score for _, score in recs]
+        min_score = min(scores)
+        max_score = max(scores)
+        if max_score == min_score:
+            return [(art_id, 1.0) for art_id, _ in recs]
+        return [(art_id, (score - min_score) / (max_score - min_score)) 
+                for art_id, score in recs]
+    
+    # Normaliser avant pondération
+    cb_recs_norm = normalize_scores(cb_recs)
+    cf_recs_norm = normalize_scores(cf_recs)
+    
+    # Dictionnaire pour stocker scores et sources
+    recommendations = {}
+    
+    # Ajouter CB avec source
+    for article_id, score in cb_recs_norm:
+        recommendations[article_id] = {
+            'score': score * cb_weight,
+            'source': 'content_based'
         }
     
-    # Ajouter/fusionner CF avec poids
-    for article_id, score in cf_recs:
-        if article_id in merged:
-            # Article recommandé par les deux : prendre le max
-            if score * weights[1] > merged[article_id]['score']:
-                merged[article_id] = {
-                    'score': score * weights[1],
-                    'method': 'collaborative'
-                }
+    # Ajouter/fusionner CF
+    for article_id, score in cf_recs_norm:
+        weighted_score = score * cf_weight
+        if article_id in recommendations:
+            recommendations[article_id]['score'] += weighted_score
+            recommendations[article_id]['source'] = 'hybrid'
         else:
-            merged[article_id] = {
-                'score': score * weights[1],
-                'method': 'collaborative'
+            recommendations[article_id] = {
+                'score': weighted_score,
+                'source': 'collaborative'
             }
     
-    # Trier et formatter
-    sorted_items = sorted(merged.items(), key=lambda x: x[1]['score'], reverse=True)
+    # Trier par score
+    sorted_items = sorted(
+        recommendations.items(), 
+        key=lambda x: x[1]['score'], 
+        reverse=True
+    )
     
-    recommendations = []
-    for rank, (article_id, info) in enumerate(sorted_items[:n_final], 1):
-        recommendations.append({
-            'rank': rank,
+    return [
+        {
             'article_id': article_id,
-            'score': round(info['score'], 3),
-            'method': info['method']
-        })
-    
-    return recommendations
+            'score': float(data['score']),
+            'source': data['source'],
+            'rank': idx + 1
+        }
+        for idx, (article_id, data) in enumerate(sorted_items[:n_final])
+    ]
+
+def get_user_profile(history_length: int) -> str:
+    """Détermine le profil utilisateur basé sur l'historique."""
+    if history_length <= 5:
+        return "cold_start"
+    elif history_length <= 15:
+        return "moderate"
+    else:
+        return "active"
+
+def get_strategy_weights(profile: str) -> Tuple[float, float]:
+    """Retourne les poids CB/CF selon le profil."""
+    strategies = {
+        'cold_start': (1.0, 0.0),
+        'moderate': (0.7, 0.3),
+        'active': (0.3, 0.7)
+    }
+    return strategies.get(profile, (0.5, 0.5))
 
 def main(req: func.HttpRequest) -> func.HttpResponse:
-    """Point d'entrée principal avec vrai système hybride."""
-    import logging
-    logging.getLogger('azure.core.pipeline.policies.http_logging_policy').setLevel(logging.WARNING)
-    logging.getLogger('azure.storage').setLevel(logging.WARNING)
-    
+    """
+    Point d'entrée de l'Azure Function.
+    Gère les requêtes de recommandation avec cache LRU.
+    """
     start_time = time.time()
-    logging.info('='*50)
-    logging.info('HYBRID RECOMMENDATION API v2.0')
-    logging.info('='*50)
     
     try:
         # Parser la requête
-        body = req.get_json() if req.get_body() else {}
-        user_id = int(body.get('user_id', 1))
-        user_history = body.get('history', [])
-        n_recommendations = int(body.get('n_recommendations', 5))
+        user_id = req.params.get('user_id')
+        if req.method == 'POST':
+            try:
+                body = req.get_json()
+                user_id = user_id or body.get('user_id')
+                user_history = body.get('history', [])
+                n_recommendations = body.get('n_recommendations', 5)
+            except:
+                user_history = []
+                n_recommendations = 5
+        else:
+            user_history = []
+            n_recommendations = 5
         
-        # Vérifier le cache
-        cache_key = f"{user_id}_{len(user_history)}_{n_recommendations}"
-        if cache_key in _recommendations_cache:
-            cached = _recommendations_cache[cache_key]
-            cached['from_cache'] = True
-            cached['inference_time_ms'] = (time.time() - start_time) * 1000
-            logging.info(f"✅ Retour depuis cache pour user {user_id}")
+        # Validation
+        if user_id is None or user_id == '':
             return func.HttpResponse(
-                json.dumps(cached, indent=2),
+                json.dumps({'error': 'user_id required'}),
+                status_code=400,
+                mimetype="application/json"
+            )
+        
+        try:
+            user_id = int(user_id)
+        except ValueError:
+            return func.HttpResponse(
+                json.dumps({'error': 'user_id must be integer'}),
+                status_code=400,
+                mimetype="application/json"
+            )
+        
+        # Créer clé de cache
+        cache_key = f"{user_id}_{n_recommendations}_{len(user_history)}"
+        
+        # Vérifier le cache LRU
+        cached_response = _recommendations_cache.get(cache_key)
+        if cached_response:
+            # Ajouter les stats de cache
+            cached_response['from_cache'] = True
+            cached_response['cache_stats'] = _recommendations_cache.get_stats()
+            cached_response['response_time_ms'] = (time.time() - start_time) * 1000
+            
+            logging.info(f"✅ Cache HIT pour user {user_id} (hit rate: {cached_response['cache_stats']['hit_rate']:.1f}%)")
+            
+            return func.HttpResponse(
+                json.dumps(cached_response, indent=2),
                 status_code=200,
                 mimetype="application/json"
             )
         
+        logging.info(f"Cache MISS pour user {user_id} - Calcul des recommandations")
+        
         # Charger les modèles si nécessaire
-        if not _models_cache:
-            if not load_models_from_blob():
-                # Fallback : recommandations aléatoires
-                logging.warning("Modèles non disponibles - mode fallback")
-                fallback_recs = [
-                    {'rank': i, 'article_id': int(np.random.randint(1, 1000)), 
-                     'score': 0.5, 'method': 'fallback'}
-                    for i in range(1, n_recommendations+1)
-                ]
-                return func.HttpResponse(
-                    json.dumps({
-                        'status': 'fallback',
-                        'recommendations': fallback_recs
-                    }),
-                    status_code=200,
-                    mimetype="application/json"
-                )
+        if not load_models_from_blob():
+            return func.HttpResponse(
+                json.dumps({'error': 'Failed to load models'}),
+                status_code=500,
+                mimetype="application/json"
+            )
         
-        # Déterminer la stratégie
+        # Déterminer le profil et la stratégie
         n_interactions = len(user_history)
-        if n_interactions <= 5:
-            strategy = 'cold_start'
-            weights = (1.0, 0.0)
-        elif n_interactions <= 15:
-            strategy = 'moderate'
-            weights = (0.7, 0.3)
-        else:
-            strategy = 'active'
-            weights = (0.3, 0.7)
+        profile = get_user_profile(n_interactions)
+        weights = get_strategy_weights(profile)
+        cb_weight, cf_weight = weights
         
-        logging.info(f"User {user_id}: {strategy} ({n_interactions} interactions)")
-        logging.info(f"Weights: CB={weights[0]:.0%}, CF={weights[1]:.0%}")
+        strategy = f"{profile} (CB:{cb_weight:.0%}, CF:{cf_weight:.0%})"
         
-        # Obtenir les recommandations
-        cb_recs = get_cb_recommendations(user_history, n_recommendations * 2)
-        cf_recs = get_cf_recommendations(user_id, n_recommendations * 2)
+        logging.info(f"User {user_id}: {n_interactions} interactions, stratégie: {strategy}")
+        
+        # Obtenir recommandations
+        cb_recs = get_cb_recommendations(user_history, n_recommendations * 2) if cb_weight > 0 else []
+        cf_recs = get_cf_recommendations(user_id, n_recommendations * 2) if cf_weight > 0 else []
         
         # Fusionner
         final_recommendations = merge_recommendations(
@@ -240,15 +336,15 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             'recommendations': final_recommendations,
             'models_loaded': list(_models_cache.keys()),
             'from_cache': False,
+            'cache_stats': _recommendations_cache.get_stats(),
             'inference_time_ms': (time.time() - start_time) * 1000
         }
         
-        # Mettre en cache (max 100 entrées)
-        if len(_recommendations_cache) > 100:
-            _recommendations_cache.clear()
-        _recommendations_cache[cache_key] = response
+        # Mettre en cache avec LRU
+        _recommendations_cache.put(cache_key, response.copy())
         
-        logging.info(f"✅ {len(final_recommendations)} recommandations en {response['inference_time_ms']:.1f}ms")
+        logging.info(f"✅ {len(final_recommendations)} recommandations générées en {response['inference_time_ms']:.1f}ms")
+        logging.info(f"Cache LRU: {_recommendations_cache.get_stats()}")
         
         return func.HttpResponse(
             json.dumps(response, indent=2),
@@ -258,8 +354,13 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         
     except Exception as e:
         logging.error(f"❌ Erreur: {str(e)}")
+        error_response = {
+            'error': str(e),
+            'cache_stats': _recommendations_cache.get_stats() if '_recommendations_cache' in globals() else None,
+            'response_time_ms': (time.time() - start_time) * 1000
+        }
         return func.HttpResponse(
-            json.dumps({'error': str(e)}),
+            json.dumps(error_response),
             status_code=500,
             mimetype="application/json"
         )
